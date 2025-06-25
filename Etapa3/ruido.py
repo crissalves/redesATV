@@ -4,7 +4,7 @@ import soundfile as sf
 
 # Configurações globais
 SAMPLE_RATE = 44100
-BIT_DURATION = 1
+BIT_DURATION = 0.05
 FREQ_LOW = 440
 FREQ_HIGH = 880
 
