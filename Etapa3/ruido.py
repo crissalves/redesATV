@@ -1,14 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import soundfile as sf
 
 # Configurações globais
 SAMPLE_RATE = 44100
-BIT_DURATION = 0.05
+BIT_DURATION = 0.05  # duração do bit em segundos(Mudei de 1 para 0.05 pois refletia melhor o gráfico e seria mais "Realista")
 FREQ_LOW = 440
 FREQ_HIGH = 880
-
-# Funções 
 
 def generate_tone(frequency, duration, sample_rate=SAMPLE_RATE):
     t = np.linspace(0, duration, int(sample_rate * duration), False)
@@ -17,133 +14,88 @@ def generate_tone(frequency, duration, sample_rate=SAMPLE_RATE):
     return tone * window
 
 def encode_nrz(data_bits):
-    audio_signal = np.array([])
-    for bit in data_bits:
-        freq = FREQ_HIGH if bit == '1' else FREQ_LOW
-        tone = generate_tone(freq, BIT_DURATION)
-        audio_signal = np.concatenate([audio_signal, tone])
-    return audio_signal
+    return np.concatenate([
+        generate_tone(FREQ_HIGH if bit == '1' else FREQ_LOW, BIT_DURATION)
+        for bit in data_bits
+    ])
 
 def encode_manchester(data_bits):
-    audio_signal = np.array([])
+    signal = np.array([])
     for bit in data_bits:
         if bit == '1':
-            tone1 = generate_tone(FREQ_HIGH, BIT_DURATION / 2)
-            tone2 = generate_tone(FREQ_LOW, BIT_DURATION / 2)
+            signal = np.concatenate([signal, generate_tone(FREQ_HIGH, BIT_DURATION / 2), generate_tone(FREQ_LOW, BIT_DURATION / 2)])
         else:
-            tone1 = generate_tone(FREQ_LOW, BIT_DURATION / 2)
-            tone2 = generate_tone(FREQ_HIGH, BIT_DURATION / 2)
-        audio_signal = np.concatenate([audio_signal, tone1, tone2])
-    return audio_signal
+            signal = np.concatenate([signal, generate_tone(FREQ_LOW, BIT_DURATION / 2), generate_tone(FREQ_HIGH, BIT_DURATION / 2)])
+    return signal
 
-def detect_frequency(audio_segment, sample_rate=SAMPLE_RATE):
-    fft = np.fft.fft(audio_segment)
-    freqs = np.fft.fftfreq(len(fft), 1/sample_rate)
+def detect_frequency(segment):
+    fft = np.fft.fft(segment)
+    freqs = np.fft.fftfreq(len(fft), 1 / SAMPLE_RATE)
     magnitude = np.abs(fft[:len(fft)//2])
     freqs_positive = freqs[:len(freqs)//2]
-    peak_idx = np.argmax(magnitude)
-    return abs(freqs_positive[peak_idx])
+    return abs(freqs_positive[np.argmax(magnitude)])
 
-def frequency_to_bit(frequency, threshold=660):
-    return '1' if frequency > threshold else '0'
+def frequency_to_bit(freq, threshold=660):
+    return '1' if freq > threshold else '0'
 
-def decode_nrz(audio_signal, num_bits):
+def decode_nrz(signal, num_bits):
     samples_per_bit = int(SAMPLE_RATE * BIT_DURATION)
-    decoded_bits = ""
+    bits = ""
     for i in range(num_bits):
-        start_idx = i * samples_per_bit
-        end_idx = start_idx + samples_per_bit
-        if end_idx > len(audio_signal):
-            break
-        segment = audio_signal[start_idx:end_idx]
-        freq = detect_frequency(segment)
-        decoded_bits += frequency_to_bit(freq)
-    return decoded_bits
+        segment = signal[i*samples_per_bit:(i+1)*samples_per_bit]
+        bits += frequency_to_bit(detect_frequency(segment))
+    return bits
 
-def decode_manchester(audio_signal, num_bits):
+def decode_manchester(signal, num_bits):
     samples_per_bit = int(SAMPLE_RATE * BIT_DURATION)
-    decoded_bits = ""
+    bits = ""
     for i in range(num_bits):
-        start_idx = i * samples_per_bit
-        end_idx = start_idx + samples_per_bit
-        if end_idx > len(audio_signal):
-            break
-        mid = start_idx + samples_per_bit // 2
-        first_half = audio_signal[start_idx + samples_per_bit//8 : mid - samples_per_bit//8]
-        second_half = audio_signal[mid + samples_per_bit//8 : end_idx - samples_per_bit//8]
-        freq1 = detect_frequency(first_half)
-        freq2 = detect_frequency(second_half)
-        state1 = frequency_to_bit(freq1)
-        state2 = frequency_to_bit(freq2)
-        if state1 == '1' and state2 == '0':
-            decoded_bits += '1'
-        elif state1 == '0' and state2 == '1':
-            decoded_bits += '0'
+        start = i * samples_per_bit
+        mid = start + samples_per_bit // 2
+        end = start + samples_per_bit
+        first = signal[start + samples_per_bit//8 : mid - samples_per_bit//8]
+        second = signal[mid + samples_per_bit//8 : end - samples_per_bit//8]
+        f1 = frequency_to_bit(detect_frequency(first))
+        f2 = frequency_to_bit(detect_frequency(second))
+        if f1 == '1' and f2 == '0':
+            bits += '1'
+        elif f1 == '0' and f2 == '1':
+            bits += '0'
         else:
-            decoded_bits += '?'  #  Indica erro de decodificação
-    return decoded_bits
+            bits += '?'
+    return bits
 
-def adicionar_ruido(audio_signal, snr_db=-3):
-    """
-    Adiciona ruído gaussiano ao sinal
-    
-    Args:
-        audio_signal: Sinal original
-        snr_db: Relação sinal-ruído em dB
-    
-    Returns:
-        array: Sinal com ruído
-    """
-    signal_power = np.mean(audio_signal ** 2)
+def adicionar_ruido(signal, snr_db = -3):
+    signal_power = np.mean(signal ** 2)
     snr_linear = 10 ** (snr_db / 10)
     noise_power = signal_power / snr_linear
-    noise = np.random.normal(0, np.sqrt(noise_power), len(audio_signal))
-    return audio_signal + noise
+    noise = np.random.normal(0, np.sqrt(noise_power) * 3, len(signal))
+    return signal + noise
 
-def contar_erros(bits_originais, bits_decodificados):
-    erros = 0
-    for o, d in zip(bits_originais, bits_decodificados):
-        if o != d:
-            erros += 1
-    return erros
+def contar_erros(original, decodificado):
+    return sum(1 for o, d in zip(original, decodificado) if o != d)
 
-# Execução com um único valor de ruído
-original_bits = "00111000"
-snr = -3
-
-print("\nEtapa 3: Teste pontual com ruído SNR = -3 dB")
-clean_signal = encode_nrz(original_bits)
-noisy_signal = adicionar_ruido(clean_signal, snr)
-decoded = decode_nrz(noisy_signal, len(original_bits))
-
-print(f"  Original:     {original_bits}")
-print(f"  Decodificado: {decoded}")
-print(f"  Correto:      {original_bits == decoded}\n")
-
-
-original_bits = "110101000100010" * 10
+original_bits = "110101000100010" * 10  # 150 bits
 num_bits = len(original_bits)
 snr_values = np.arange(5, -20, -1)
-
 errors_nrz = []
 errors_manchester = []
 
 for snr in snr_values:
-    sinal_nrz = encode_nrz(original_bits)
-    sinal_nrz_ruido = adicionar_ruido(sinal_nrz, snr)
-    decodificado_nrz = decode_nrz(sinal_nrz_ruido, num_bits)
-    erros_nrz = contar_erros(original_bits, decodificado_nrz)
-    errors_nrz.append(erros_nrz)
+    # NRZ
+    clean_nrz = encode_nrz(original_bits)
+    noisy_nrz = adicionar_ruido(clean_nrz, snr)
+    decoded_nrz = decode_nrz(noisy_nrz, num_bits)
+    errors_nrz.append(contar_erros(original_bits, decoded_nrz))
+    
+    # Manchester
+    clean_manchester = encode_manchester(original_bits)
+    noisy_manchester = adicionar_ruido(clean_manchester, snr)
+    decoded_manchester = decode_manchester(noisy_manchester, num_bits)
+    errors_manchester.append(contar_erros(original_bits, decoded_manchester))
 
-    sinal_manchester = encode_manchester(original_bits)
-    sinal_manchester_ruido = adicionar_ruido(sinal_manchester, snr)
-    decodificado_manchester = decode_manchester(sinal_manchester_ruido, num_bits)
-    erros_manchester = contar_erros(original_bits, decodificado_manchester)
-    errors_manchester.append(erros_manchester)
+    print(f"SNR={snr} | NRZ erros: {errors_nrz[-1]} | Manchester erros: {errors_manchester[-1]}")
 
-    print(f"SNR={snr} dB | Erros NRZ: {erros_nrz} | Erros Manchester: {erros_manchester}")
-
-# Gráfico
 plt.plot(snr_values, errors_nrz, label='NRZ', marker='o')
 plt.plot(snr_values, errors_manchester, label='Manchester', marker='x')
 plt.xlabel('SNR (dB)')
