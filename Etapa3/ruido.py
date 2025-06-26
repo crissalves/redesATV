@@ -8,7 +8,7 @@ BIT_DURATION = 0.05
 FREQ_LOW = 440
 FREQ_HIGH = 880
 
-# === Funções ===
+# Funções 
 
 def generate_tone(frequency, duration, sample_rate=SAMPLE_RATE):
     t = np.linspace(0, duration, int(sample_rate * duration), False)
@@ -80,7 +80,7 @@ def decode_manchester(audio_signal, num_bits):
         elif state1 == '0' and state2 == '1':
             decoded_bits += '0'
         else:
-            decoded_bits += '?'  # erro
+            decoded_bits += '?'  #  Indica erro de decodificação
     return decoded_bits
 
 def adicionar_ruido(audio_signal, snr_db=-3):
@@ -107,8 +107,7 @@ def contar_erros(bits_originais, bits_decodificados):
             erros += 1
     return erros
 
-# === Execução com um único valor de ruído (Exemplo do notebook) ===
-
+# Execução com um único valor de ruído
 original_bits = "00111000"
 snr = -3
 
@@ -121,7 +120,6 @@ print(f"  Original:     {original_bits}")
 print(f"  Decodificado: {decoded}")
 print(f"  Correto:      {original_bits == decoded}\n")
 
-# === Análise completa com gráfico ===
 
 original_bits = "110101000100010" * 10
 num_bits = len(original_bits)
@@ -131,14 +129,12 @@ errors_nrz = []
 errors_manchester = []
 
 for snr in snr_values:
-    # NRZ
     sinal_nrz = encode_nrz(original_bits)
     sinal_nrz_ruido = adicionar_ruido(sinal_nrz, snr)
     decodificado_nrz = decode_nrz(sinal_nrz_ruido, num_bits)
     erros_nrz = contar_erros(original_bits, decodificado_nrz)
     errors_nrz.append(erros_nrz)
 
-    # Manchester
     sinal_manchester = encode_manchester(original_bits)
     sinal_manchester_ruido = adicionar_ruido(sinal_manchester, snr)
     decodificado_manchester = decode_manchester(sinal_manchester_ruido, num_bits)
