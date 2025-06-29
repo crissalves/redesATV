@@ -1,33 +1,67 @@
 import soundfile as sf
 import numpy as np
 
-def detect_frequency(audio_segment, sample_rate=44100):
-    fft = np.fft.fft(audio_segment)
-    freqs = np.fft.fftfreq(len(fft), 1/sample_rate)
-    magnitude = np.abs(fft[:len(fft)//2])
-    freqs_positive = freqs[:len(freqs)//2]
-    peak_idx = np.argmax(magnitude)
-    return abs(freqs_positive[peak_idx])
+def capturar_do_microfone(duracao_segundos):
+    """
+    Captura áudio do microfone
+    
+    Args:
+        duracao_segundos: Duração da captura
+    
+    Returns:
+        array: Áudio capturado
+    """
+    print(f"Iniciando captura por {duracao_segundos} segundos...")
+    print("Reproduza o áudio no seu celular AGORA!")
+    
+    # Captura áudio
+    audio_capturado = sd.rec(
+        int(duracao_segundos * SAMPLE_RATE), 
+        samplerate=SAMPLE_RATE, 
+        channels=1
+    )
+    sd.wait()  # Aguarda terminar a captura
+    
+    print("Captura concluída!")
+    return audio_capturado.flatten()
 
-def frequency_to_bit(frequency, threshold=660):
-    return '1' if frequency > threshold else '0'
+import random
+import csv
 
-def decode_nrz(audio_signal, num_bits, sample_rate=44100, bit_duration=1.0):
-    samples_per_bit = int(sample_rate * bit_duration)
-    decoded_bits = ""
-    for i in range(num_bits):
-        start_idx = i * samples_per_bit
-        end_idx = start_idx + samples_per_bit
-        if end_idx > len(audio_signal):
-            break
-        segment = audio_signal[start_idx:end_idx]
-        freq = detect_frequency(segment, sample_rate)
-        bit = frequency_to_bit(freq)
-        decoded_bits += bit
-    return decoded_bits
 
-audio_signal, samplerate = sf.read("dados_ar.wav")
-num_bits = 15  # ajuste se souber outro valor
+def gerar_string_binaria(n):
+    return ''.join(random.choice('01') for _ in range(n))
 
-decoded_message = decode_nrz(audio_signal, num_bits, samplerate)
-print(f"Mensagem decodificada NRZ: {decoded_message}")
+
+def gerar_questao(n,start=8,stop=16):
+    dados = []
+    for i in range(n):
+        n_bits = random.randrange(start,stop)
+        msg = gerar_string_binaria(n_bits)
+        encoder = random.choice([encode_manchester, encode_nrz])
+        modulacao = encoder.__name__
+        nome = f"dados_{i}_{SAMPLE_RATE}hz.wav"
+        sinal = encoder(msg)
+        sf.write(nome, sinal, SAMPLE_RATE)
+        
+        linha = {
+            'arquivo':nome,
+            'msg': msg,
+            'n_bits':n_bits,
+            'modulacao':modulacao
+        }
+        dados.append(linha)
+        # print(n_bits,msg,modulacao,nome,len(sinal))
+    # print(dados):
+    
+    nome_arquivo = 'gabarito.csv'
+
+    # Escrita no arquivo CSV
+    with open(nome_arquivo, mode='w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=dados[0].keys())
+        writer.writeheader()
+        writer.writerows(dados)
+
+
+
+gerar_questao(50)
